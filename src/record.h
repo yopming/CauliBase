@@ -11,6 +11,6 @@
  */
 struct Record {
   std::string key;
-  std::string value;
+  std::string val;
   bool tombstone = false; // delete flag
 };
