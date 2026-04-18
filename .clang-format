@@ -3,3 +3,15 @@ BasedOnStyle: LLVM
 ---
 Language: Cpp
 ColumnLimit: 120
+
+# A function call’s arguments will either be all on the same line or will have one line each.
+BinPackArguments: false
+Cpp11BracedListStyle: true
+
+# Short IF style
+# WithoutElse: `if (a) return;` can be put on a single line
+AllowShortIfStatementsOnASingleLine: WithoutElse
+
+# Class constructor initializer
+# Never: one initializer one line
+PackConstructorInitializers: Never
