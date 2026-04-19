@@ -1,43 +1,42 @@
 #pragma once
 
-#include "record.h"
 #include <filesystem>
 #include <fstream>
 #include <vector>
 
+#include "record.h"
+
 /**
  * @brief class of WAL, Write-Ahead Log
- * Before actual written, all data are written into log file. 
- * Even program crashes, data can be recovered from log files.
+ * Before actual written, all data are written to log files.
+ * If program crashes, data can be recovered from log files.
+ *
  */
 class WAL {
 public:
-  explicit WAL(const std::filesystem::path& path);
+  explicit WAL(const std::filesystem::path &path);
 
-  void appendPut(const std::string& key, const std::string& val);
-  void appendDelete(const std::string& key);
+  void appendPut(const std::string &key, const std::string &val);
+  void appendDelete(const std::string &key);
 
   // Flush WAL into hard disk
   void sync();
 
-  // Read all operations from WAL and make them vector of Records
-  // When program restarts, this recovers memtable in memory
-  static std::vector<Record> replay(const std::filesystem::path& path);
-
   // Empty WAL file
-  // Often called when memtable is flushed into SSTable
-  static void reset(const std::filesystem::path& path);
+  // Often called when memtable is full and flushed into SSTable
+  void reset();
+
+  // Read all operations from WAL and make them vector of Record
+  // When program restarts, this recovers memtable in memory
+  std::vector<Record> replay();
 
 private:
-  /**
-   * @brief Append a record to the WAL
-   * 
-   * @param op operation type, 'P' for put, 'D' for delete
-   * @param key 
-   * @param val
-   */
-  void appendRecord(char op, const std::string& key, const std::string& val);
+  // open WAL file and check status
+  void openWALFile();
 
-  std::filesystem::path path_; // file path for WAL file
-  std::ofstream out_; // out stream to append data into WAL files
+  // Append a record to the WAL
+  void appendRecord(char op, const std::string &key, const std::string &val);
+
+  std::filesystem::path wal_path_; // path for WAL file
+  std::ofstream wal_out_;          // out stream to append data into WAL files
 };
