@@ -13,5 +13,4 @@ Cpp11BracedListStyle: true
 AllowShortIfStatementsOnASingleLine: WithoutElse
 
 # Class constructor initializer
-# Never: one initializer one line
-PackConstructorInitializers: Never
+PackConstructorInitializers: CurrentLine
