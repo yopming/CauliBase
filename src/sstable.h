@@ -4,6 +4,7 @@
 #include <fstream>
 #include <map>
 #include <optional>
+#include <vector>
 
 #include "record.h"
 
@@ -30,8 +31,24 @@ public:
   std::map<std::string, Record> loadAll() const;
 
 private:
+  struct IndexEntry {
+    std::string key;
+    std::uint64_t offset = 0;
+  };
+
+  struct Metadata {
+    std::vector<IndexEntry> index;
+    std::vector<std::uint8_t> bloom_bits;
+    std::uint64_t bloom_bit_count = 0;
+    std::uint32_t bloom_hash_count = 0;
+  };
+
   // read one record from filestream which maintains pointer
-  Record readRecord(std::ifstream& in) const;
+  Record readRecord(std::ifstream &in) const;
+  std::optional<Metadata> loadMetadata() const;
+  const std::optional<Metadata> &metadata() const;
+  bool bloomMayContain(const Metadata &metadata, const std::string &key) const;
 
   std::filesystem::path sstable_path_; // sstable file path
+  mutable std::optional<std::optional<Metadata>> metadata_cache_;
 };

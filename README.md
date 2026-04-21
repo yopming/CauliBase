@@ -20,6 +20,7 @@ The project is intentionally compact and educational, with unit tests for the co
 - WAL replay on startup for crash recovery of unflushed writes
 - Key normalization with a short 64-bit hash-based internal key
 - Optional Feistel-based pseudo-random permutation and 1000-slot block-level key shuffling
+- SSTables include a Bloom filter and key-offset index for faster point lookups
 
 ## Development Environment
 
@@ -76,6 +77,8 @@ The benchmark program lives in `bench/` and measures the main database operation
 - `get_sstable`
 - `del`
 - `compact`
+
+SSTable point lookups use a Bloom filter to reject absent keys, then binary-search a key-offset index and seek directly to the matching record. Older SSTable files without metadata still fall back to sequential scanning.
 
 Default benchmark settings:
 
