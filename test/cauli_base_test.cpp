@@ -4,7 +4,9 @@
 
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <sstream>
 #include <string>
 
@@ -41,6 +43,11 @@ std::size_t countSSTables(const std::filesystem::path &path) {
     }
   }
   return count;
+}
+
+std::string readBinaryFile(const std::filesystem::path &path) {
+  std::ifstream in(path, std::ios::binary);
+  return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
 }
 
 } // namespace
@@ -222,6 +229,57 @@ TEST_CASE("cauli_base.cpp / flush on empty memtable is a no-op") {
   db.flush();
 
   CHECK(countSSTables(temp.path()) == 0);
+}
+
+TEST_CASE("cauli_base.cpp / key shuffling stores transformed keys and keeps operations working") {
+  TempDir temp("shuffle_keys");
+  {
+    CauliBase db(temp.path(), 10, KeyTransformOptions{true});
+    db.put("customer:123456789", "Alice");
+    db.flush();
+
+    CHECK(db.get("customer:123456789").value_or("") == "Alice");
+    db.del("customer:123456789");
+    CHECK(db.get("customer:123456789").has_value() == false);
+  }
+
+  const std::string sstable_bytes = readBinaryFile(temp.path() / "000001.sst");
+  CHECK(sstable_bytes.find("customer:123456789") == std::string::npos);
+  CHECK(sstable_bytes.find(KeyTransform(KeyTransformOptions{true}).storageKey("customer:123456789")) != std::string::npos);
+
+  CauliBase reopened(temp.path(), 10, KeyTransformOptions{true});
+  CHECK(reopened.get("customer:123456789").has_value() == false);
+}
+
+TEST_CASE("cauli_base.cpp / shuffling can be disabled for comparison") {
+  TempDir temp("shuffle_off");
+  {
+    CauliBase db(temp.path(), 10, KeyTransformOptions{false});
+    db.put("customer:123456789", "Alice");
+    db.flush();
+  }
+
+  const std::string sstable_bytes = readBinaryFile(temp.path() / "000001.sst");
+  CHECK(sstable_bytes.find("customer:123456789") == std::string::npos);
+  CHECK(sstable_bytes.find(KeyTransform(KeyTransformOptions{false}).storageKey("customer:123456789")) != std::string::npos);
+
+  CauliBase reopened(temp.path(), 10, KeyTransformOptions{false});
+  CHECK(reopened.get("customer:123456789").value_or("") == "Alice");
+}
+
+TEST_CASE("cauli_base.cpp / prepared shuffled keys keep put get del behavior") {
+  TempDir temp("prepared_shuffle_keys");
+  CauliBase db(temp.path(), 10, KeyTransformOptions{true});
+  const std::vector<std::string> keys = {"alpha", "bravo", "charlie"};
+
+  db.prepareKeys(keys);
+  db.put("alpha", "1");
+  db.put("bravo", "2");
+  db.del("alpha");
+
+  CHECK(db.get("alpha").has_value() == false);
+  CHECK(db.get("bravo").value_or("") == "2");
+  CHECK(db.get("charlie").has_value() == false);
 }
 
 TEST_CASE("cauli_base.cpp / printDebug prints memtable and SSTable counts") {

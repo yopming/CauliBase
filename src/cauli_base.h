@@ -5,8 +5,10 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
+#include "key_transform.h"
 #include "record.h"
 #include "sstable.h"
 #include "wal.h"
@@ -46,11 +48,14 @@ public:
    * @param db_dir
    * @param memtable_limit
    */
-  explicit CauliBase(const std::filesystem::path &db_dir, std::size_t memtable_limit = 1024);
+  explicit CauliBase(const std::filesystem::path &db_dir, std::size_t memtable_limit = 1024,
+                     KeyTransformOptions key_options = {});
 
   void put(const std::string &key, const std::string &val);
   void del(const std::string &key);
   std::optional<std::string> get(const std::string &key) const;
+  void prepareKey(const std::string &key) const;
+  void prepareKeys(const std::vector<std::string> &keys) const;
 
   void flush();
   void compact();          // merge multiple SSTables
@@ -60,6 +65,7 @@ private:
   void maybeFlush();     // check if memtable exceeds limit, if so flush to SSTable
   void recoverFromWAL(); // recover memtable from WAL after crash
   void loadSSTables();   // load all SSTables into memory for faster get()
+  const std::string &storageKeyFor(const std::string &key) const;
 
   // generate next SSTable file path
   std::filesystem::path nextSSTablePath() const;
@@ -70,4 +76,6 @@ private:
   std::map<std::string, Record> memtable_; // memtable in memory
   std::vector<SSTable> sstables_;          // sstables_ in-memory
   std::size_t memtable_limit_;             // when trigger flush
+  KeyTransform key_transform_;             // normalize, permute, and optionally shuffle external keys
+  mutable std::unordered_map<std::string, std::string> key_cache_;
 };

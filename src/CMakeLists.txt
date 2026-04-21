@@ -1,6 +1,7 @@
 # ---- Library: cauli_base_core ----
 add_library(cauli_base_core
   cauli_base.cpp
+  key_transform.cpp
   sstable.cpp
   wal.cpp
 )

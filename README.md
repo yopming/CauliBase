@@ -18,6 +18,8 @@ The project is intentionally compact and educational, with unit tests for the co
 - `compact`: merge SSTables and discard tombstones
 - `debug`: print current memtable and SSTable state
 - WAL replay on startup for crash recovery of unflushed writes
+- Key normalization with a short 64-bit hash-based internal key
+- Optional Feistel-based pseudo-random permutation and 1000-slot block-level key shuffling
 
 ## Development Environment
 
@@ -33,12 +35,6 @@ The project is intentionally compact and educational, with unit tests for the co
 ```bash
 cmake -S . -B build
 cmake --build build
-```
-
-## Run
-
-```bash
-./build/src/cauli_base
 ```
 
 By default, the CLI stores database files in:
@@ -63,6 +59,14 @@ You can also run the doctest binary directly:
 ./build/test/cauli_unit_tests
 ```
 
+There is also a larger shuffling performance comparison test. It is gated behind an environment variable so normal test runs stay fast:
+
+```bash
+CAULI_RUN_SHUFFLE_PERF=1 ./build/test/cauli_unit_tests --test-case="performance / shuffling on vs off large dataset*"
+```
+
+The test loads 100,000 keys and prints `shuffle_on` versus `shuffle_off` timings for put/get/delete and total runtime.
+
 ## Benchmark
 
 The benchmark program lives in `bench/` and measures the main database operations:
@@ -72,14 +76,6 @@ The benchmark program lives in `bench/` and measures the main database operation
 - `get_sstable`
 - `del`
 - `compact`
-
-Build and run:
-
-```bash
-cmake -S . -B build
-cmake --build build
-./build/bench/cauli_bench
-```
 
 Default benchmark settings:
 
@@ -92,28 +88,43 @@ value_size=64
 You can override the settings:
 
 ```bash
-./build/bench/cauli_bench [operations] [compact_operations] [value_size]
+./build/bench/cauli_bench [operations] [compact_operations] [value_size] [both|shuffle-on|shuffle-off] [prepare-keys|no-prepare] [repeats]
 ```
 
 Example:
 
 ```bash
-./build/bench/cauli_bench 1000 200 64
+./build/bench/cauli_bench 1000 200 64 both
 ```
 
-Sample output:
+To exclude key normalization/shuffling from the measured operation time, precompute storage keys before each benchmark stage:
+
+```bash
+./build/bench/cauli_bench 10000 2000 64 both prepare-keys
+```
+
+This calls `prepareKeys(...)` before the timed `put/get/del/compact` sections, so the timed operations use cached internal keys.
+
+For more stable results, pass a repeat count and compare the median plus min/max range:
+
+```bash
+./build/bench/cauli_bench 10000 2000 64 both prepare-keys 7
+```
+
+When `both` is selected, the benchmark includes `shuffle_vs_plain%`, which reports how much more time the shuffled run used compared with the matching non-shuffled run:
 
 ```text
-CauliBase benchmark
-operations=1000, compact_operations=200, value_size=64
+benchmark                  ops       median_ms       avg_us/op         ops/sec        min_ms        max_ms shuffle_vs_plain%
+----------------------------------------------------------------------------------------------------------------------------
+put_shuffle               1000           9.850           9.850       101522.84         9.601        10.228             23.40
+put_plain                 1000           7.982           7.982       125281.88         7.721         8.196                 -
+```
 
-benchmark                  ops        total_ms       avg_us/op         ops/sec
-------------------------------------------------------------------------------
-put                       1000           4.512           4.512       221649.63
-get_memtable              1000           1.105           1.105       904635.99
-get_sstable               1000         120.448         120.448         8302.36
-del                       1000           2.269           2.269       440730.94
-compact                    300          16.245          54.149        18467.55
+In code, pass `KeyTransformOptions{true}` to enable shuffling or `KeyTransformOptions{false}` to keep only hash normalization:
+
+```cpp
+CauliBase shuffled(db_path, 1024, KeyTransformOptions{true});
+CauliBase normalized_only(db_path, 1024, KeyTransformOptions{false});
 ```
 
 ## Commands

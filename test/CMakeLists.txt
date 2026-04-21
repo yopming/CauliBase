@@ -1,8 +1,10 @@
 add_executable(cauli_unit_tests
   command_test.cpp
   cauli_base_test.cpp
+  key_transform_test.cpp
   main_test.cpp
   record_test.cpp
+  shuffling_performance_test.cpp
   sstable_test.cpp
   wal_test.cpp
   ${PROJECT_SOURCE_DIR}/src/main.cpp

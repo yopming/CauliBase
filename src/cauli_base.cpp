@@ -22,14 +22,16 @@
  * @param db_dir
  * @param memtable_limit
  */
-CauliBase::CauliBase(const std::filesystem::path &db_dir, std::size_t memtable_limit)
+CauliBase::CauliBase(const std::filesystem::path &db_dir, std::size_t memtable_limit, KeyTransformOptions key_options)
     : db_dir_(db_dir),
       wal_path_(db_dir_ / "wal.log"),
-      memtable_limit_(memtable_limit) {
+      memtable_limit_(memtable_limit),
+      key_transform_(key_options) {
   // make sure the directory exists
   std::filesystem::create_directories(db_dir_);
 
   wal_ = std::make_unique<WAL>(wal_path_); // 1. initialize WAL
+  key_cache_.reserve(memtable_limit_);
   recoverFromWAL();                        // 2. recover memtable from WAL
   loadSSTables();                          // 3. load SSTables
 }
@@ -41,10 +43,11 @@ CauliBase::CauliBase(const std::filesystem::path &db_dir, std::size_t memtable_l
  * @param val
  */
 void CauliBase::put(const std::string &key, const std::string &val) {
-  wal_->appendPut(key, val);                // 1. append PUT(K,V) into WAL
-  wal_->sync();                             // 2. persist WAL
-  memtable_[key] = Record{key, val, false}; // 3. update memtable_ (ram's latest status)
-  maybeFlush();                             // 4. see if flush needed
+  const std::string &storage_key = storageKeyFor(key);
+  wal_->appendPut(storage_key, val);                        // 1. append PUT(K,V) into WAL
+  wal_->sync();                                             // 2. persist WAL
+  memtable_[storage_key] = Record{storage_key, val, false}; // 3. update memtable_ (ram's latest status)
+  maybeFlush();                                             // 4. see if flush needed
 }
 
 /**
@@ -53,10 +56,11 @@ void CauliBase::put(const std::string &key, const std::string &val) {
  * @param key
  */
 void CauliBase::del(const std::string &key) {
-  wal_->appendDelete(key);                // 1. append DEL(K) into WAL
-  wal_->sync();                           // 2. persist WAL
-  memtable_[key] = Record{key, "", true}; // 3. update memtable_
-  maybeFlush();                           // 4. see if flush needed
+  const std::string &storage_key = storageKeyFor(key);
+  wal_->appendDelete(storage_key);                        // 1. append DEL(K) into WAL
+  wal_->sync();                                           // 2. persist WAL
+  memtable_[storage_key] = Record{storage_key, "", true}; // 3. update memtable_
+  maybeFlush();                                           // 4. see if flush needed
 }
 
 /**
@@ -66,8 +70,10 @@ void CauliBase::del(const std::string &key) {
  * @return std::optional<std::string>
  */
 std::optional<std::string> CauliBase::get(const std::string &key) const {
+  const std::string &storage_key = storageKeyFor(key);
+
   // search memtable_ (in memory) first
-  auto it_ram = memtable_.find(key);
+  auto it_ram = memtable_.find(storage_key);
   if (it_ram != memtable_.end()) {
     // if found in ram, check 'tombstone'
     if (it_ram->second.tombstone) {
@@ -79,7 +85,7 @@ std::optional<std::string> CauliBase::get(const std::string &key) const {
 
   // search sstables_ (in disk) if key not found in memory
   for (auto it_disk = sstables_.rbegin(); it_disk != sstables_.rend(); ++it_disk) {
-    auto record = it_disk->get(key);
+    auto record = it_disk->get(storage_key);
     if (record.has_value()) {
       // if key found, check 'tombstone' further
       if (record->tombstone) {
@@ -91,6 +97,15 @@ std::optional<std::string> CauliBase::get(const std::string &key) const {
   }
 
   return std::nullopt; // if not found in disk
+}
+
+void CauliBase::prepareKey(const std::string &key) const { (void)storageKeyFor(key); }
+
+void CauliBase::prepareKeys(const std::vector<std::string> &keys) const {
+  key_cache_.reserve(key_cache_.size() + keys.size());
+  for (const auto &key : keys) {
+    prepareKey(key);
+  }
 }
 
 void CauliBase::flush() {
@@ -230,6 +245,16 @@ void CauliBase::loadSSTables() {
   for (const auto &file : files) {
     sstables_.emplace_back(file);
   }
+}
+
+const std::string &CauliBase::storageKeyFor(const std::string &key) const {
+  auto cached = key_cache_.find(key);
+  if (cached != key_cache_.end()) {
+    return cached->second;
+  }
+
+  auto inserted = key_cache_.emplace(key, key_transform_.storageKey(key));
+  return inserted.first->second;
 }
 
 /**
