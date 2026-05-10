@@ -30,6 +30,8 @@ The project is intentionally compact and educational, with unit tests for the co
 - Main executable target: `cauli_base`
 - Unit test target: `cauli_unit_tests`
 - Benchmark target: `cauli_bench`
+- YCSB workload generator target: `ycsb_workload_generator`
+- YCSB benchmark target: `ycsb_bench`
 
 ## Build
 
@@ -85,3 +87,26 @@ You can override the settings:
 ```bash
 ./build/bench/cauli_bench [operations] [compact_operations] [value_size] [both|shuffle-on|shuffle-off] [prepare-keys|no-prepare] [repeats]
 ```
+
+## YCSB Workload Generator
+
+The benchmark directory also includes a YCSB-style workload generator. It emits a load phase of `INSERT` records followed by a transaction phase matching the standard core workloads:
+
+- `a`: 50% reads, 50% updates
+- `b`: 95% reads, 5% updates
+- `c`: 100% reads
+- `d`: 95% latest-biased reads, 5% inserts
+- `e`: 95% scans, 5% inserts
+- `f`: 50% reads, 50% read-modify-writes
+
+```bash
+./build/bench/ycsb_workload_generator [a|b|c|d|e|f] [record_count] [operation_count] [value_size] [uniform|zipfian|latest] [seed]
+```
+
+To execute those workloads against CauliBase and report load/transaction throughput:
+
+```bash
+./build/bench/ycsb_bench [all|a|b|c|d|e|f] [record_count] [operation_count] [value_size] [uniform|zipfian|latest] [shuffle-on|shuffle-off] [seed] [memtable_limit]
+```
+
+`all` runs workloads A, B, C, and F.

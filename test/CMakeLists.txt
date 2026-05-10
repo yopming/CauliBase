@@ -7,6 +7,8 @@ add_executable(cauli_unit_tests
   shuffling_performance_test.cpp
   sstable_test.cpp
   wal_test.cpp
+  ycsb_workload_test.cpp
+  ${PROJECT_SOURCE_DIR}/bench/ycsb_workload.cpp
   ${PROJECT_SOURCE_DIR}/src/main.cpp
 )
 
@@ -17,6 +19,7 @@ target_link_libraries(cauli_unit_tests PRIVATE
 
 target_include_directories(cauli_unit_tests PRIVATE
   ${PROJECT_SOURCE_DIR}
+  ${PROJECT_SOURCE_DIR}/bench
   ${PROJECT_SOURCE_DIR}/src
 )
 
